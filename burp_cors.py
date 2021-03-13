@@ -65,16 +65,8 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         return payloads
 
     def _add_origin(self, headers, value):
-    
-        new_headers = list()
-        headers = list(headers)
-        for header in headers:
-            if "Origin:" in header:
-                new_headers.append('Origin: {}'.format(value))
-            else:
-                new_headers.append(header)
-        if not any("Origin:" in h for h in new_headers):
-            new_headers.append("Origin: {}".format(value))
+        new_headers = [h for h in headers if not "Origin:" in h]
+        new_headers.append("Origin: {}".format(value))
         return new_headers
 
     def doPassiveScan(self, baseRequestResponse):
