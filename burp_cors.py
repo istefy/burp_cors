@@ -55,7 +55,7 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         payloads['trust_prefix'] = {'origin': payload_url, 'description': 'Site trust prefix', 'severity': 'High'}
         # trust invalid dot escape
         splitted_host = host.split('.')
-        payload_host = '{}A{}.{}'.format('.'.join(splitted_host[:-1]), splitted_host[-1], splitted_host[-1])
+        payload_host = '{}A{}'.format(splitted_host[0],'.'.join(splitted_host[1:]))
         payload_url = '{}://{}'.format(protocol, payload_host)
         payloads['trust_invalid_regex'] = {'origin': payload_url, 'description': 'Site trust origin with unescaped dot', 'severity': 'High'}
         # whitespace check
