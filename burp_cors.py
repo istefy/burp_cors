@@ -4,7 +4,6 @@ from burp import IScanIssue
 from burp import IExtensionHelpers
 
 from exceptions_fix import FixBurpExceptions
-from urlparse import urlparse
 
 from java.io import PrintWriter
 import sys
@@ -34,34 +33,37 @@ class BurpExtender(IBurpExtender, IScannerCheck):
     def _generate_payloads(self, url):
 
         host = url.getHost()
-        protocol = url.getProtocol()
-
         payloads = {}
+
         # trust any origin
-        payload_url = '{}://vasya.xyz'.format(protocol)
+        payload_url = 'https://vasya.xyz'
         payloads['trust_any_origin'] = {'origin': payload_url, 'description': 'Site trust any origin', 'severity': 'High'}
-        # trust any subdomain
-        payload_url = '{}://vasya.{}'.format(protocol, host)
-        payloads['trust_any_subdomain'] = {'origin': payload_url, 'description': 'Site trust any subdomain', 'severity': 'High'}
         # trust insecure protocol
-        if protocol == 'https':
-            payload_url = 'http://vasya.{}'.format(host)
-            payloads['trust_http'] = {'origin': payload_url, 'description': 'Site trust insecure protocol', 'severity': 'Medium'}
+        payload_url = 'http://{}'.format(host)
+        payloads['trust_http'] = {'origin': payload_url, 'description': 'Site trust insecure protocol', 'severity': 'Low'}
+        # trust any subdomain
+        # payload_url = 'https://vasya.{}'.format(host)
+        # payloads['trust_any_subdomain'] = {'origin': payload_url, 'description': 'Site trust any subdomain', 'severity': 'Low'}
         # trust null
         payload_url = 'null'
         payloads['trust_null'] = {'origin': payload_url, 'description': 'Site trust null origin', 'severity': 'High'}
-        # prefix match full url
-        payload_url = '{}://{}.vasya.xyz'.format(protocol, host)
+        # prefix match
+        payload_url = 'https://{}.vasya.xyz'.format(host)
         payloads['trust_prefix'] = {'origin': payload_url, 'description': 'Site trust prefix', 'severity': 'High'}
+        # suffix match
+        # payload_url = 'https://vasya.xyz.{}'.format(host)
+        # payloads['trust_suffix'] = {'origin': payload_url, 'description': 'Site trust suffix', 'severity':'Low'}
+        # underscope bypass
+        payload_url = 'https://{}_vasya.xyz'.format(host)
+        payloads['underscope_bypass'] = {'origin': payload_url, 'description': 'Underscope bypass', 'severity':'High'}
+        # whitespace bypass
+        payload_url = 'https://{} vasya.xyz'.format(host)
+        payloads['whitespace_check'] = {'origin': payload_url, 'description': 'Whitespace bypass', 'severity': 'High'}
         # trust invalid dot escape
-        splitted_host = host.split('.')
-        payload_host = '{}A{}'.format(splitted_host[0],'.'.join(splitted_host[1:]))
-        payload_url = '{}://{}'.format(protocol, payload_host)
-        payloads['trust_invalid_regex'] = {'origin': payload_url, 'description': 'Site trust origin with unescaped dot', 'severity': 'High'}
-        # whitespace check
-        payload_url = '{}://{} vasya.xyz'.format(protocol, host)
-        payloads['whitespace_check'] = {'origin': payload_url, 'description': 'Site trust origin with whitepace', 'severity': 'High'}
-        
+        if host.count('.') > 1:
+            last_index = host.rfind('.')
+            payload_url = 'https://{}'.format(host[0:last_index].replace('.','x')+host[last_index:])
+            payloads['trust_invalid_regex'] = {'origin': payload_url, 'description': 'Site trust origin with unescaped dot', 'severity': 'High'}
         return payloads
 
     def _add_origin(self, headers, value):
@@ -78,11 +80,11 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         if self._callbacks.isInScope(request_url) and (res_type == "JSON" or res_type == "HTML"):
             response_headers = list(self._helpers.analyzeResponse(baseRequestResponse.getResponse()).getHeaders()) 
             for response_header in response_headers:
-                if 'Access-Control-Allow-Origin' in response_header or 'Access-Control-Allow-Credentials' in response_header:
+                if 'access-control-allow-origin' in response_header.lower() or 'access-control-allow-credentials' in response_header.lower():
                     request_headers = list(self._helpers.analyzeRequest(baseRequestResponse).getHeaders())
 
                     # wildcard check
-                    if response_header == 'Access-Control-Allow-Origin: *':
+                    if response_header.lower() == 'access-control-allow-origin: *':
                         return CustomScanIssue(
                         baseRequestResponse.getHttpService(),
                         request_url,
@@ -110,20 +112,20 @@ class BurpExtender(IBurpExtender, IScannerCheck):
                         response_headers = list(self._helpers.analyzeResponse(response.getResponse()).getHeaders())
 
                         for response_header in response_headers:
-                            if 'Access-Control-Allow-Origin' in response_header:
-                                    issues.append(
-                                        CustomScanIssue(
-                                            baseRequestResponse.getHttpService(),
-                                            request_url,
-                                            [response],
-                                            'CORS Misconfiguration',
-                                            payload['description'],
-                                            payload['severity']
-                                        )
+                            if 'access-control-allow-origin'.lower() in response_header:
+                                issues.append(
+                                    CustomScanIssue(
+                                        baseRequestResponse.getHttpService(),
+                                        request_url,
+                                        [response],
+                                        'CORS Misconfiguration',
+                                        payload['origin']+"<br><br>"+payload['description'],
+                                        payload['severity']
                                     )
-                            
-                                    break
-                        return issues
+                                )
+                                break
+
+                    return issues
 
     def consolidateDuplicateIssues(self, existingIssue, newIssue):
         # This method is called when multiple issues are reported for the same URL 
